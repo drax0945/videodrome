@@ -311,7 +311,8 @@ export function Timeline() {
   const fit = () => {
     const el = scroller.current;
     if (!el) return;
-    const d = Math.max(duration, 5);
+    // read the live clip list: this can run right after an edit, before this component re-renders
+    const d = Math.max(projectDuration(useEditor.getState().clips), 5);
     useEditor.setState({ pps: clamp((el.clientWidth - HDR_W - 60) / d, PPS_MIN, PPS_MAX) });
     el.scrollLeft = 0;
   };
