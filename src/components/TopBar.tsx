@@ -6,19 +6,6 @@ import { ASPECTS, FPS, timecode } from '../lib/util';
 import { projectDuration } from '../state/timeline';
 import { IconButton } from './ui/controls';
 
-export function Logo({ size = 28 }: { size?: number }) {
-  const tri = 'M10.5 8.5 L20 14 L10.5 19.5 Z';
-  return (
-    <svg width={size} height={size} viewBox="0 0 28 28" fill="none" aria-hidden>
-      <rect x="0.75" y="0.75" width="26.5" height="26.5" rx="7" fill="#0e1013" stroke="#2c3139" strokeWidth="1.5" />
-      <path d="M5 6.5h4M19 6.5h4M5 21.5h4M19 21.5h4" stroke="#383d45" strokeWidth="1.2" />
-      <path d={tri} stroke="#ff2e88" strokeWidth="1.2" transform="translate(-1.6 0)" opacity="0.85" />
-      <path d={tri} stroke="#2ef2ff" strokeWidth="1.2" transform="translate(1.6 0)" opacity="0.85" />
-      <path d={tri} fill="#c8ff2e" />
-    </svg>
-  );
-}
-
 export function TopBar() {
   const name = useEditor((s) => s.projectName);
   const aspect = useEditor((s) => s.aspect);
@@ -31,7 +18,6 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="brand">
-        <Logo />
         <span className="brand-name">VIDEODROME</span>
         <span className="brand-tag">NLE/0.1</span>
       </div>
