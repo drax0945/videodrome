@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { CircleCheck, Info, TriangleAlert } from 'lucide-react';
 import { TopBar } from './components/TopBar';
 import { SideRail } from './components/SideRail';
@@ -8,15 +8,18 @@ import { CanvasPanel, KeysPanel } from './components/panels/CanvasPanel';
 import { Preview } from './components/Preview';
 import { Inspector } from './components/Inspector';
 import { Timeline, zoomBy } from './components/timeline/Timeline';
-import { ExportDialog } from './components/ExportDialog';
 import { deleteClip, duplicateClip, getDuration, redo, selectClip, splitAt, toast, undo, updateClip, useEditor } from './state/store';
 import { engine } from './engine/engine';
 import { importFiles } from './engine/media';
 import { ASPECTS, FPS, isEditableTarget } from './lib/util';
 import { hasUnsavedWork, initPersistence } from './state/persist';
 
+// the encoder toolkit is heavy — only load it when someone opens Export
+const ExportDialog = lazy(() => import('./components/ExportDialog').then((m) => ({ default: m.ExportDialog })));
+
 export function App() {
   const tab = useEditor((s) => s.leftTab);
+  const exportOpen = useEditor((s) => s.exportOpen);
   const appRef = useRef<HTMLDivElement>(null);
   const [dropActive, setDropActive] = useState(false);
   const [tlHeight, setTlHeight] = useState(() => Math.round(Math.max(240, Math.min(360, window.innerHeight * 0.34))));
@@ -108,7 +111,11 @@ export function App() {
       <Inspector />
       <div className={`splitter ${resizing ? 'on' : ''}`} onPointerDown={startResize} />
       <Timeline />
-      <ExportDialog />
+      {exportOpen && (
+        <Suspense fallback={null}>
+          <ExportDialog />
+        </Suspense>
+      )}
       <Toasts />
     </div>
   );

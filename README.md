@@ -9,7 +9,7 @@ npm run dev        # http://localhost:5173
 npm run build      # type-check + production build into dist/
 ```
 
-Best in Chrome or Edge (canvas filters, `letterSpacing`, and MP4 recording via `MediaRecorder`).
+Best in Chrome or Edge (canvas filters, `letterSpacing`, WebCodecs H.264/AAC encoding).
 
 ## Features
 
@@ -17,9 +17,9 @@ Best in Chrome or Edge (canvas filters, `letterSpacing`, and MP4 recording via `
 - **Program monitor** — live canvas compositor with aspect presets (16:9, 9:16, 1:1, 4:5, 21:9), safe-area/thirds guides, fullscreen, and on-canvas move / scale / rotate handles with center & edge snapping.
 - **Multi-track timeline** — unlimited overlay and audio tracks (top track renders on top), drag to move between tracks, drop on the dashed zones to create new tracks, trim with edge handles, split at playhead, ripple delete, duplicate, snapping, zoom (slider, ⌘/ctrl+scroll, fit), per-track hide/mute.
 - **Text** — 10 styled presets (headline, lower third, neon, glitch, terminal typewriter, poster, outline…) with font, weight, size, tracking, leading, fill, background, outline, glow and animations (typewriter, slide, pop, glitch).
-- **Per-clip properties** — transform, opacity, fit/fill, colour looks + brightness/contrast/saturation/hue/blur/mono/sepia/invert, volume (up to +6 dB), mute, speed (0.1×–4×), fade in/out.
+- **Per-clip properties** — transform, opacity, fit/fill, colour looks + brightness/contrast/saturation/hue/blur/mono/sepia/invert, volume (up to +6 dB), mute, speed (0.1×–4×, pitch follows speed), fade in/out.
 - **Undo / redo** for every edit.
-- **Export** — real-time render to MP4 (H.264/AAC) or WebM at 480p / 720p / 1080p, 24/30/60 fps, with in-app preview and download.
+- **Export** — frame-by-frame render with WebCodecs to MP4 (H.264 + AAC) or WebM (VP9 + Opus) at 480p / 720p / 1080p, 24/30/60 fps and three quality levels. Usually several times faster than real time, every frame exact, keeps going in a background tab. Browsers without WebCodecs fall back to a real-time `MediaRecorder` capture.
 
 ## Shortcuts
 
@@ -44,7 +44,9 @@ src/
   engine/     engine.ts  – clock, <video>/<audio> pool synced to the timeline, Web Audio mix, render loop
               render.ts  – canvas compositor (layout, filters, text + animations, hit-testing)
               media.ts   – import pipeline (metadata, thumbnails, waveform peaks)
-              export.ts  – MediaRecorder capture of canvas + audio mix
+              export.ts  – WebCodecs export: decodes source frames at exact timestamps, renders each
+                           output frame, mixes audio offline, muxes with Mediabunny
+              export-realtime.ts – MediaRecorder fallback for browsers without WebCodecs
   components/ TopBar, SideRail, panels/, Preview (monitor + transform overlay + transport),
               Inspector, timeline/ (Timeline, ClipItem), ExportDialog
 ```

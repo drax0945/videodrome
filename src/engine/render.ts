@@ -10,6 +10,14 @@ export interface LayoutBox {
   rotation: number;
 }
 
+/** Anything that can supply a video frame: a live <video> element in preview, a decoded WebCodecs frame on export. */
+export interface FrameSource {
+  /** display size after pixel-aspect and rotation */
+  width: number;
+  height: number;
+  draw(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void;
+}
+
 export interface RenderInput {
   ctx: CanvasRenderingContext2D;
   W: number;
@@ -21,7 +29,7 @@ export interface RenderInput {
   tracks: Track[];
   clips: Clip[];
   media: Map<string, MediaItem>;
-  getVideo: (clip: Clip) => HTMLVideoElement | undefined;
+  getVideoFrame: (clip: Clip) => FrameSource | undefined;
   getImage: (m: MediaItem) => HTMLImageElement | undefined;
   ensureFont: (font: string) => void;
 }
@@ -51,9 +59,9 @@ function measureText(ctx: CanvasRenderingContext2D, ts: TextStyle): TextMetrics 
   return { lines, lh, pad, w, h };
 }
 
-function visualSize(clip: Clip, m: MediaItem | undefined, el: HTMLVideoElement | undefined, W: number, H: number) {
-  const sw = el?.videoWidth || m?.width || W;
-  const sh = el?.videoHeight || m?.height || H;
+function visualSize(clip: Clip, m: MediaItem | undefined, frame: FrameSource | undefined, W: number, H: number) {
+  const sw = frame?.width || m?.width || W;
+  const sh = frame?.height || m?.height || H;
   const s0 = clip.fit === 'cover' ? Math.max(W / sw, H / sh) : Math.min(W / sw, H / sh);
   return { w: sw * s0 * clip.scale, h: sh * s0 * clip.scale };
 }
@@ -258,24 +266,28 @@ export function renderFrame(r: RenderInput): LayoutBox[] {
 
       const m = clip.mediaId ? r.media.get(clip.mediaId) : undefined;
       if (!m) continue;
-      let source: CanvasImageSource | undefined;
-      let el: HTMLVideoElement | undefined;
+      let frame: FrameSource | undefined;
       if (clip.type === 'video') {
-        el = r.getVideo(clip);
-        if (el && el.readyState >= 2) source = el;
+        frame = r.getVideoFrame(clip);
       } else if (clip.type === 'image') {
         const img = r.getImage(m);
-        if (img && img.complete && img.naturalWidth) source = img;
+        if (img && img.complete && img.naturalWidth) {
+          frame = {
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            draw: (c, x, y, w, h) => c.drawImage(img, x, y, w, h),
+          };
+        }
       }
-      const { w, h } = visualSize(clip, m, el, W, H);
+      const { w, h } = visualSize(clip, m, frame, W, H);
       layout.push({ clipId: clip.id, cx, cy, w, h, rotation: clip.rotation });
-      if (!source || alpha <= 0.001) continue;
+      if (!frame || alpha <= 0.001) continue;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(rot);
       ctx.globalAlpha = alpha;
       ctx.filter = filterString(clip.filters, rs);
-      ctx.drawImage(source, -w / 2, -h / 2, w, h);
+      frame.draw(ctx, -w / 2, -h / 2, w, h);
       ctx.restore();
     }
   }

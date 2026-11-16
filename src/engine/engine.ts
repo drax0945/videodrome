@@ -1,7 +1,7 @@
 import type { Clip, MediaItem } from '../state/types';
 import { getDuration, useEditor } from '../state/store';
 import { ASPECTS, clamp, fadeEnvelope } from '../lib/util';
-import { renderFrame, type LayoutBox } from './render';
+import { renderFrame, type FrameSource, type LayoutBox } from './render';
 
 interface ElEntry {
   el: HTMLMediaElement;
@@ -237,6 +237,8 @@ class Engine {
       const el = document.createElement(m.kind === 'audio' ? 'audio' : 'video') as HTMLMediaElement;
       el.preload = 'auto';
       el.crossOrigin = 'anonymous';
+      // export resamples sped-up audio (pitch follows speed); keep the preview identical
+      el.preservesPitch = false;
       if (el instanceof HTMLVideoElement) el.playsInline = true;
       el.src = m.url;
       el.currentTime = clip.trimStart;
@@ -281,9 +283,14 @@ class Engine {
     e.el.currentTime = t;
   }
 
-  getVideo = (clip: Clip) => {
-    const e = this.els.get(clip.id);
-    return e?.el instanceof HTMLVideoElement ? e.el : undefined;
+  getVideoFrame = (clip: Clip): FrameSource | undefined => {
+    const el = this.els.get(clip.id)?.el;
+    if (!(el instanceof HTMLVideoElement) || el.readyState < 2) return undefined;
+    return {
+      width: el.videoWidth,
+      height: el.videoHeight,
+      draw: (ctx, x, y, w, h) => ctx.drawImage(el, x, y, w, h),
+    };
   };
 
   getImage = (m: MediaItem) => {
@@ -368,7 +375,7 @@ class Engine {
       tracks: s.tracks,
       clips: s.clips,
       media: new Map(s.media.map((m) => [m.id, m])),
-      getVideo: this.getVideo,
+      getVideoFrame: this.getVideoFrame,
       getImage: this.getImage,
       ensureFont: this.ensureFont,
     });

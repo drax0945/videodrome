@@ -1,18 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CircleCheck, Download, Info, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CircleCheck, Download, Info, LoaderCircle, X, Zap } from 'lucide-react';
 import { toast, useEditor } from '../state/store';
-import { exportProject, supportedFormats, type ExportFormat } from '../engine/export';
+import {
+  codecLabel,
+  exportProject,
+  getExportFormats,
+  type ExportFormat,
+  type ExportProgress,
+  type QualityId,
+} from '../engine/export';
 import { ASPECTS, bytes, timecode } from '../lib/util';
 import { projectDuration } from '../state/timeline';
 import { Toggle } from './ui/controls';
 
-const QUALITIES = [
+const RESOLUTIONS = [
   { short: 480, label: '480p', sub: 'Draft' },
   { short: 720, label: '720p', sub: 'HD' },
   { short: 1080, label: '1080p', sub: 'Full HD' },
 ];
 
-type Phase = { kind: 'setup' } | { kind: 'rendering'; p: number; t: number } | { kind: 'done'; url: string; size: number };
+const QUALITY_OPTS: { id: QualityId; label: string; sub: string }[] = [
+  { id: 'standard', label: 'Standard', sub: 'Smaller file' },
+  { id: 'high', label: 'High', sub: 'Recommended' },
+  { id: 'max', label: 'Max', sub: 'Largest file' },
+];
+
+type Phase =
+  | { kind: 'setup' }
+  | { kind: 'rendering'; p: number; t: number; speed: number }
+  | { kind: 'done'; url: string; size: number; seconds: number };
 
 export function ExportDialog() {
   const open = useEditor((s) => s.exportOpen);
@@ -24,18 +40,33 @@ function ExportInner() {
   const name = useEditor((s) => s.projectName);
   const aspect = useEditor((s) => s.aspect);
   const duration = useEditor((s) => projectDuration(s.clips));
-  const formats = useMemo(supportedFormats, []);
-  const [format, setFormat] = useState<ExportFormat | undefined>(formats[0]);
+  const [formats, setFormats] = useState<ExportFormat[] | null>(null);
+  const [formatId, setFormatId] = useState<ExportFormat['id']>('mp4');
   const [short, setShort] = useState(1080);
   const [fps, setFps] = useState(30);
+  const [quality, setQuality] = useState<QualityId>('high');
   const [monitor, setMonitor] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: 'setup' });
   const abort = useRef<AbortController | null>(null);
+  const live = useRef<HTMLCanvasElement>(null);
 
   const { w, h } = ASPECTS[aspect];
   const k = short / Math.min(w, h);
   const outW = Math.round((w * k) / 2) * 2;
   const outH = Math.round((h * k) / 2) * 2;
+  const format = formats?.find((f) => f.id === formatId) ?? formats?.[0];
+  const fast = format?.engine === 'webcodecs';
+
+  useEffect(() => {
+    let alive = true;
+    const s = 1080 / Math.min(w, h);
+    getExportFormats(Math.round(w * s), Math.round(h * s))
+      .then((f) => alive && setFormats(f))
+      .catch(() => alive && setFormats([]));
+    return () => {
+      alive = false;
+    };
+  }, [w, h]);
 
   const close = () => {
     abort.current?.abort();
@@ -51,36 +82,40 @@ function ExportInner() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  const onProgress = (p: ExportProgress) => {
+    setPhase({ kind: 'rendering', p: p.fraction, t: p.time, speed: p.speed });
+    const c = live.current;
+    if (c && p.canvas) {
+      const ctx = c.getContext('2d');
+      if (c.width !== c.clientWidth * 2) {
+        c.width = c.clientWidth * 2;
+        c.height = Math.round((c.width * p.canvas.height) / p.canvas.width);
+      }
+      ctx?.drawImage(p.canvas, 0, 0, c.width, c.height);
+    }
+  };
+
   const start = async () => {
     if (!format) return;
     const ctl = new AbortController();
     abort.current = ctl;
-    setPhase({ kind: 'rendering', p: 0, t: 0 });
+    const startedAt = performance.now();
+    setPhase({ kind: 'rendering', p: 0, t: 0, speed: 0 });
     try {
-      const blob = await exportProject({
-        format,
-        shortSide: short,
-        fps,
-        monitor,
-        signal: ctl.signal,
-        onProgress: (p, t) => setPhase({ kind: 'rendering', p, t }),
-      });
-      setPhase({ kind: 'done', url: URL.createObjectURL(blob), size: blob.size });
-      toast('Render complete', 'success');
+      const blob = await exportProject({ format, shortSide: short, fps, quality, monitor, signal: ctl.signal, onProgress });
+      const seconds = (performance.now() - startedAt) / 1000;
+      setPhase({ kind: 'done', url: URL.createObjectURL(blob), size: blob.size, seconds });
+      toast(`Rendered in ${seconds.toFixed(1)}s`, 'success');
     } catch (err) {
-      if ((err as DOMException).name === 'AbortError') {
-        setPhase({ kind: 'setup' });
-        toast('Export cancelled');
-      } else {
-        setPhase({ kind: 'setup' });
-        toast(`Export failed — ${(err as Error).message}`, 'error');
-      }
+      setPhase({ kind: 'setup' });
+      if ((err as DOMException).name === 'AbortError') toast('Export cancelled');
+      else toast(`Export failed — ${(err as Error).message}`, 'error');
     } finally {
       abort.current = null;
     }
   };
 
-  const fileName = `${(name || 'videodrome').replace(/[^\w\- ]+/g, '').trim() || 'videodrome'}.${format?.ext ?? 'webm'}`;
+  const fileName = `${(name || 'videodrome').replace(/[^\w\- ]+/g, '').trim() || 'videodrome'}.${format?.ext ?? 'mp4'}`;
 
   return (
     <div className="modal-bg" onPointerDown={(e) => e.target === e.currentTarget && phase.kind !== 'rendering' && close()}>
@@ -88,7 +123,7 @@ function ExportInner() {
         <div className="modal-head">
           <div>
             <div className="label" style={{ marginBottom: 4 }}>
-              {phase.kind === 'rendering' ? '● REC' : phase.kind === 'done' ? 'OUTPUT READY' : 'RENDER QUEUE'}
+              {phase.kind === 'rendering' ? '● RENDERING' : phase.kind === 'done' ? 'OUTPUT READY' : 'RENDER QUEUE'}
             </div>
             <h3>{phase.kind === 'done' ? 'Your video is ready' : 'Export video'}</h3>
           </div>
@@ -102,17 +137,21 @@ function ExportInner() {
         {phase.kind === 'setup' && (
           <>
             <div className="modal-body">
-              {!formats.length && (
-                <div className="info-line" style={{ color: 'var(--red)' }}>
-                  <Info size={14} /> This browser can’t record video (MediaRecorder unavailable). Try Chrome or Edge.
+              {formats === null ? (
+                <div className="info-line">
+                  <LoaderCircle size={14} className="spin" /> Checking which encoders this browser has…
                 </div>
-              )}
+              ) : !formats.length ? (
+                <div className="info-line" style={{ color: 'var(--red)' }}>
+                  <Info size={14} /> This browser can’t encode video. Try a recent Chrome or Edge.
+                </div>
+              ) : null}
               <div>
                 <div className="label" style={{ marginBottom: 8 }}>
                   Resolution
                 </div>
                 <div className="opt-grid">
-                  {QUALITIES.map((q) => (
+                  {RESOLUTIONS.map((q) => (
                     <button key={q.short} className={`opt ${short === q.short ? 'on' : ''}`} onClick={() => setShort(q.short)}>
                       <b>{q.label}</b>
                       <span>{q.sub}</span>
@@ -120,6 +159,21 @@ function ExportInner() {
                   ))}
                 </div>
               </div>
+              {fast && (
+                <div>
+                  <div className="label" style={{ marginBottom: 8 }}>
+                    Quality
+                  </div>
+                  <div className="opt-grid">
+                    {QUALITY_OPTS.map((q) => (
+                      <button key={q.id} className={`opt ${quality === q.id ? 'on' : ''}`} onClick={() => setQuality(q.id)}>
+                        <b style={{ fontSize: 12 }}>{q.label}</b>
+                        <span>{q.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <div className="label" style={{ marginBottom: 8 }}>
@@ -138,36 +192,55 @@ function ExportInner() {
                     Container
                   </div>
                   <div className="seg full">
-                    {formats.map((f) => (
-                      <button key={f.id} className={format?.id === f.id ? 'on' : ''} onClick={() => setFormat(f)}>
+                    {(formats ?? []).map((f) => (
+                      <button key={f.id} className={format?.id === f.id ? 'on' : ''} onClick={() => setFormatId(f.id)}>
                         {f.ext.toUpperCase()}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="row" style={{ justifyContent: 'space-between', margin: 0 }}>
-                <span className="info-line">Play audio while rendering</span>
-                <Toggle on={monitor} onChange={setMonitor} />
-              </div>
-              <div className="stat-grid">
+              {format?.engine === 'realtime' && (
+                <div className="row" style={{ justifyContent: 'space-between', margin: 0 }}>
+                  <span className="info-line">Play audio while rendering</span>
+                  <Toggle on={monitor} onChange={setMonitor} />
+                </div>
+              )}
+              <div className="stat-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                 <div className="stat">
                   <div className="label">Output</div>
-                  <div className="v" style={{ fontSize: 14 }}>
+                  <div className="v" style={{ fontSize: 13 }}>
                     {outW}×{outH}
                   </div>
                 </div>
                 <div className="stat">
                   <div className="label">Runtime</div>
-                  <div className="v" style={{ fontSize: 14 }}>
-                    {timecode(duration).slice(3)}
+                  <div className="v" style={{ fontSize: 13 }}>
+                    {timecode(duration).slice(3, 8)}
+                  </div>
+                </div>
+                <div className="stat">
+                  <div className="label">Codec</div>
+                  <div className="v" style={{ fontSize: 13 }}>
+                    {fast ? `${codecLabel(format?.videoCodec)}${format?.audioCodec ? '+' + codecLabel(format.audioCodec) : ''}` : format ? 'MediaRec' : '—'}
                   </div>
                 </div>
               </div>
-              <div className="info-line">
-                <Info size={14} style={{ flexShrink: 0 }} />
-                Rendering happens locally in real time (about as long as the video). Keep this tab open until it finishes.
-              </div>
+              {format && (
+                <div className="info-line">
+                  {fast ? (
+                    <>
+                      <Zap size={14} style={{ flexShrink: 0, color: 'var(--accent)' }} />
+                      Frame-by-frame render with WebCodecs — usually faster than real time, every frame exact.
+                    </>
+                  ) : (
+                    <>
+                      <Info size={14} style={{ flexShrink: 0 }} />
+                      This browser has no WebCodecs, so rendering runs in real time. Keep this tab open until it finishes.
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div className="modal-foot">
               <button className="btn ghost" onClick={close}>
@@ -183,6 +256,7 @@ function ExportInner() {
         {phase.kind === 'rendering' && (
           <>
             <div className="modal-body">
+              {fast && <canvas ref={live} className="export-preview" style={{ aspectRatio: `${outW} / ${outH}`, width: '100%' }} />}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span className="mono" style={{ fontSize: 28, fontWeight: 600 }}>
                   {Math.floor(phase.p * 100)}
@@ -195,9 +269,16 @@ function ExportInner() {
               <div className="meter">
                 <div style={{ width: `${phase.p * 100}%` }} />
               </div>
-              <div className="info-line">
-                <span className="dot live" />
-                Encoding {outW}×{outH} @ {fps}fps → {format?.ext.toUpperCase()}
+              <div className="info-line" style={{ justifyContent: 'space-between' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="dot live" />
+                  {outW}×{outH} @ {fps}fps → {format?.ext.toUpperCase()}
+                </span>
+                {phase.speed > 0 && (
+                  <span className="mono" style={{ color: phase.speed >= 1 ? 'var(--accent)' : 'var(--dim)' }}>
+                    {phase.speed.toFixed(1)}× real-time
+                  </span>
+                )}
               </div>
             </div>
             <div className="modal-foot">
@@ -215,7 +296,8 @@ function ExportInner() {
               <div className="info-line">
                 <CircleCheck size={15} color="var(--accent)" />
                 <span>
-                  {fileName} · {bytes(phase.size)}
+                  {fileName} · {bytes(phase.size)} · rendered in {phase.seconds.toFixed(1)}s
+                  {duration > 0 && ` (${(duration / phase.seconds).toFixed(1)}× real-time)`}
                 </span>
               </div>
             </div>
