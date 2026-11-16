@@ -27,6 +27,7 @@ import { ASPECTS, clamp, fadeEnvelope } from '../lib/util';
 import { engine } from './engine';
 import { fontString, renderFrame, type FrameSource } from './render';
 import { exportRealtime, recorderFormats } from './export-realtime';
+import { ensureFontFace } from '../fonts';
 
 /*
  * Frame-by-frame export with WebCodecs (via Mediabunny for demuxing/muxing):
@@ -415,7 +416,7 @@ async function exportWebCodecs(opts: ExportOptions): Promise<Blob> {
         const m = snap.media.get(c.mediaId);
         if (m) await engine.getImage(m).decode().catch(() => undefined);
       } else if (c.type === 'text' && c.text) {
-        await document.fonts.load(fontString(c.text)).catch(() => undefined);
+        await ensureFontFace(c.text.font, fontString(c.text));
       }
     }),
   );

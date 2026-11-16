@@ -2,6 +2,7 @@ import type { Clip, MediaItem } from '../state/types';
 import { getDuration, useEditor } from '../state/store';
 import { ASPECTS, clamp, fadeEnvelope } from '../lib/util';
 import { renderFrame, type FrameSource, type LayoutBox } from './render';
+import { ensureFontFace } from '../fonts';
 
 interface ElEntry {
   el: HTMLMediaElement;
@@ -304,12 +305,10 @@ class Engine {
     return img;
   };
 
-  ensureFont = (font: string) => {
-    if (this.fonts.has(font)) return;
-    this.fonts.add(font);
-    if (!document.fonts.check(font)) {
-      document.fonts.load(font).then(this.invalidate, () => undefined);
-    }
+  ensureFont = (family: string, cssFont: string) => {
+    if (this.fonts.has(cssFont)) return;
+    this.fonts.add(cssFont);
+    void ensureFontFace(family, cssFont).then(this.invalidate);
   };
 
   /** Keep every <video>/<audio> element aligned with the timeline clock. */

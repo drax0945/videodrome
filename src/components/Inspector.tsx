@@ -20,9 +20,10 @@ import {
 import type { Clip, MediaItem, TextAnim, TextStyle } from '../state/types';
 import { deleteClip, toast, updateClip, updateText, useEditor } from '../state/store';
 import { neighbourBounds, projectDuration } from '../state/timeline';
-import { FONTS } from '../state/textPresets';
+import { fontDef, nearestWeight } from '../fonts';
+import { FontPicker } from './ui/FontPicker';
 import { ASPECTS, DEFAULT_FILTERS, FILTER_PRESETS, filterString, shortTime, timecode } from '../lib/util';
-import { ColorField, IconButton, Section, Seg, Select, Slider, Toggle } from './ui/controls';
+import { ColorField, IconButton, Section, Seg, Slider, Toggle } from './ui/controls';
 
 type Tab = 'text' | 'style' | 'transform' | 'adjust' | 'audio' | 'speed' | 'fade';
 
@@ -301,6 +302,16 @@ function FadeTab({ clip }: { clip: Clip }) {
 
 /* ───────────── text ───────────── */
 
+const WEIGHT_NAMES: Record<number, string> = {
+  300: 'Light',
+  400: 'Regular',
+  500: 'Medium',
+  600: 'Semibold',
+  700: 'Bold',
+  800: 'Extra bold',
+  900: 'Black',
+};
+
 function TextTab({ clip, ts }: { clip: Clip; ts: TextStyle }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const set = (patch: Partial<TextStyle>) => updateText(clip.id, patch);
@@ -316,19 +327,16 @@ function TextTab({ clip, ts }: { clip: Clip; ts: TextStyle }) {
       </Section>
       <Section title="Type">
         <div className="row">
-          <Select
-            style={{ flex: 1 }}
-            value={ts.font}
-            onChange={(font) => set({ font })}
-            options={FONTS.map((f) => ({ value: f, label: f }))}
-          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <FontPicker value={ts.font} onChange={(font) => set({ font, weight: nearestWeight(font, ts.weight) })} />
+          </div>
         </div>
         <div className="row">
           <Seg
             full
             value={ts.weight}
             onChange={(weight) => set({ weight })}
-            options={[400, 500, 600, 700, 800].map((w) => ({ value: w, label: String(w) }))}
+            options={(fontDef(ts.font)?.weights ?? [400, 700]).map((w) => ({ value: w, label: String(w), tip: WEIGHT_NAMES[w] }))}
           />
         </div>
         <Slider label="Size" value={ts.size} min={12} max={400} def={96} format={(v) => `${v}px`} onChange={(size) => set({ size })} />

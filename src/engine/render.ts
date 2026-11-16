@@ -31,7 +31,7 @@ export interface RenderInput {
   media: Map<string, MediaItem>;
   getVideoFrame: (clip: Clip) => FrameSource | undefined;
   getImage: (m: MediaItem) => HTMLImageElement | undefined;
-  ensureFont: (font: string) => void;
+  ensureFont: (family: string, cssFont: string) => void;
 }
 
 export function fontString(ts: TextStyle) {
@@ -250,7 +250,7 @@ export function renderFrame(r: RenderInput): LayoutBox[] {
       const rot = (clip.rotation * Math.PI) / 180;
 
       if (clip.type === 'text' && clip.text) {
-        r.ensureFont(fontString(clip.text));
+        r.ensureFont(clip.text.font, fontString(clip.text));
         const m = measureText(ctx, clip.text);
         layout.push({ clipId: clip.id, cx, cy, w: m.w * clip.scale, h: m.h * clip.scale, rotation: clip.rotation });
         if (alpha <= 0.001) continue;

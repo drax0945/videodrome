@@ -1,15 +1,5 @@
 import type { TextStyle } from './types';
 
-export const FONTS = [
-  'Space Grotesk',
-  'Inter',
-  'JetBrains Mono',
-  'Orbitron',
-  'Bebas Neue',
-  'Playfair Display',
-  'Permanent Marker',
-];
-
 export const BASE_TEXT: TextStyle = {
   content: 'Your text',
   font: 'Space Grotesk',

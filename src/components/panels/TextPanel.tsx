@@ -1,10 +1,11 @@
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import { Plus } from 'lucide-react';
 import { TEXT_PRESETS, BASE_TEXT, type TextPreset } from '../../state/textPresets';
 import { addTextClip } from '../../state/store';
 import { engine } from '../../engine/engine';
 import { hexToRgba } from '../../lib/util';
 import { startLibraryDrag } from '../dnd';
+import { loadFontFamily } from '../../fonts';
 
 function sampleStyle(p: TextPreset): CSSProperties {
   const s = { ...BASE_TEXT, ...p.style };
@@ -34,6 +35,9 @@ function sampleStyle(p: TextPreset): CSSProperties {
 }
 
 export function TextPanel() {
+  useEffect(() => {
+    for (const p of TEXT_PRESETS) void loadFontFamily(p.style.font ?? BASE_TEXT.font);
+  }, []);
   return (
     <>
       <div className="panel-head">
